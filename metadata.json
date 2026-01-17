@@ -1,0 +1,5 @@
+{
+  "name": "Calculadora de Comisiones Pro",
+  "description": "Aplicación para el seguimiento y cálculo de comisiones por ventas con indicadores de volumen, mix, financiación y calidad.",
+  "requestFramePermissions": []
+}
