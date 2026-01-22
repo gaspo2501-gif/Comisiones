@@ -1,18 +1,24 @@
 
 {
-  "name": "Calculadora de Comisiones Pro",
-  "short_name": "Comisiones",
-  "description": "Seguimiento de ventas e indicadores de comisiones.",
+  "name": "ComisApp - Gestión de Comisiones",
+  "short_name": "ComisApp",
+  "description": "Calculador de comisiones offline para vendedores.",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#2563eb",
+  "background_color": "#4f46e5",
+  "theme_color": "#4f46e5",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/3135/3135706.png",
-      "sizes": "512x512",
+      "src": "https://cdn-icons-png.flaticon.com/192/2618/2618175.png",
       "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2618/2618175.png",
+      "type": "image/png",
+      "sizes": "512x512",
       "purpose": "any maskable"
     }
   ]

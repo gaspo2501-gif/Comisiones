@@ -3,6 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#4f46e5">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ComisApp">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2618/2618175.png">
+    
+    <!-- Manifest Link -->
+    <link rel="manifest" href="manifest.json">
+    
     <title>ComisApp - Gestión de Comisiones</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -29,9 +41,10 @@
 <script type="importmap">
 {
   "imports": {
-    "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/"
   }
 }
 </script>
@@ -47,6 +60,15 @@
 
         const html = htm.bind(React.createElement);
         const { useState, useEffect, useMemo } = React;
+
+        // --- SERVICE WORKER REGISTRATION ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('SW registrado', reg))
+                    .catch(err => console.log('Error registrando SW', err));
+            });
+        }
 
         // --- CONSTANTS ---
         const VAT_RATE = 1.21;
@@ -121,7 +143,7 @@
                             </div>
                         </div>
                         <div class="text-right">
-                            <span class="text-[10px] bg-indigo-500 px-2 py-1 rounded font-bold uppercase tracking-tighter">Versión Estática</span>
+                            <span class="text-[10px] bg-indigo-500 px-2 py-1 rounded font-bold uppercase tracking-tighter">v2.4 PWA</span>
                         </div>
                     </header>
 
@@ -144,15 +166,25 @@
                 date: new Date().toISOString().split('T')[0],
                 client: '', model: '', priceWithVat: '', inMix: false, isFinanced: false
             });
+            const [showSuccess, setShowSuccess] = useState(false);
+
+            useEffect(() => {
+                if (showSuccess) {
+                    const timer = setTimeout(() => setShowSuccess(false), 2000);
+                    return () => clearTimeout(timer);
+                }
+            }, [showSuccess]);
+
+            const isFormValid = formData.client.trim() && formData.model.trim() && formData.priceWithVat;
 
             const handleSubmit = (e) => {
                 e.preventDefault();
-                if (isClosed) return;
-                if (!formData.client || !formData.model || !formData.priceWithVat) return;
+                if (isClosed || !isFormValid) return;
 
                 const priceWithVat = parseFloat(formData.priceWithVat);
                 const priceWithoutVat = priceWithVat / VAT_RATE;
-                const baseCommissionUnit = priceWithoutVat * params.baseCommissionRate;
+                const baseCommissionRate = params.baseCommissionRate;
+                const baseCommissionUnit = priceWithoutVat * baseCommissionRate;
                 const id = Date.now().toString(36) + Math.random().toString(36).substring(2);
 
                 onAddSale({
@@ -162,10 +194,20 @@
                 });
 
                 setFormData({ ...formData, client: '', model: '', priceWithVat: '', inMix: false, isFinanced: false });
+                setShowSuccess(true);
             };
 
+            const sortedSales = [...sales].sort((a, b) => b.date.localeCompare(a.date));
+
             return html`
-                <div class="space-y-6">
+                <div class="space-y-6 relative">
+                    ${showSuccess && html`
+                        <div class="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-green-500 text-white px-6 py-2 rounded-full shadow-2xl font-bold flex items-center gap-2 animate-bounce">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>
+                            ¡Venta Guardada!
+                        </div>
+                    `}
+
                     <section class=${`p-4 rounded-xl border flex items-center justify-between ${isClosed ? 'bg-gray-100 border-gray-200' : 'bg-indigo-50 border-indigo-100'}`}>
                         <div>
                             <label class="text-[10px] font-bold text-gray-500 uppercase block">Periodo Activo</label>
@@ -183,10 +225,16 @@
                             <h2 class="text-lg font-bold mb-4 text-indigo-800">Nueva Venta</h2>
                             <form onSubmit=${handleSubmit} class="space-y-4">
                                 <div class="grid grid-cols-1 gap-3">
-                                    <input type="date" value=${formData.date} onChange=${e => setFormData({...formData, date: e.target.value})} class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    <div class="relative">
+                                        <label class="absolute -top-2 left-3 bg-white px-1 text-[10px] font-bold text-indigo-400 uppercase">Fecha</label>
+                                        <input type="date" value=${formData.date} onChange=${e => setFormData({...formData, date: e.target.value})} class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    </div>
                                     <input type="text" placeholder="Cliente" value=${formData.client} onChange=${e => setFormData({...formData, client: e.target.value})} class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
                                     <input type="text" placeholder="Modelo" value=${formData.model} onChange=${e => setFormData({...formData, model: e.target.value})} class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
-                                    <input type="number" step="0.01" placeholder="Precio Final ($)" value=${formData.priceWithVat} onChange=${e => setFormData({...formData, priceWithVat: e.target.value})} class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    <div class="relative">
+                                        <label class="absolute -top-2 left-3 bg-white px-1 text-[10px] font-bold text-indigo-400 uppercase">Precio Final ($)</label>
+                                        <input type="number" inputmode="decimal" step="0.01" placeholder="Ej: 2500000" value=${formData.priceWithVat} onChange=${e => setFormData({...formData, priceWithVat: e.target.value})} class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    </div>
                                 </div>
                                 <div class="flex gap-3">
                                     <label class="flex-1 flex items-center justify-center gap-2 p-3 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 active:bg-gray-200 transition-colors">
@@ -198,7 +246,10 @@
                                         <span class="text-sm font-medium">Finan</span>
                                     </label>
                                 </div>
-                                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-indigo-700 active:scale-95 transition-transform">Guardar Venta</button>
+                                <button type="submit" disabled=${!isFormValid} 
+                                        class=${`w-full font-black py-4 rounded-xl shadow-lg transition-all uppercase tracking-[0.2em] text-sm ${isFormValid ? 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95' : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'}`}>
+                                    Guardar Venta
+                                </button>
                             </form>
                         </section>
                     `}
@@ -214,31 +265,29 @@
                         ${sales.length === 0 ? html`
                             <div class="text-center py-10 text-gray-400 bg-white rounded-xl border border-dashed border-gray-300">No hay ventas registradas.</div>
                         ` : html`
-                            <div class="space-y-3">
-                                ${[...sales].reverse().map(sale => html`
-                                    <div key=${sale.id} class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm relative overflow-hidden flex">
+                            <div class="space-y-2">
+                                ${sortedSales.map(sale => html`
+                                    <div key=${sale.id} class="bg-white p-2.5 rounded-xl border border-gray-200 shadow-sm relative overflow-hidden flex items-center">
                                         <div class="flex-1">
-                                            <div class="flex justify-between items-start mb-2">
+                                            <div class="flex justify-between items-start">
                                                 <div>
-                                                    <h3 class="font-bold text-gray-800 leading-tight">${sale.client}</h3>
-                                                    <p class="text-sm text-gray-500">${sale.model}</p>
+                                                    <h3 class="font-semibold text-gray-800 leading-tight text-[14px]">${sale.client}</h3>
+                                                    <p class="text-[11px] text-gray-400 font-medium uppercase leading-none mt-0.5">${sale.model}</p>
                                                 </div>
-                                                <p class="text-[10px] font-mono text-gray-400 bg-gray-50 px-1 rounded">${sale.date}</p>
+                                                <p class="text-[9px] font-bold text-gray-300 uppercase">${sale.date}</p>
                                             </div>
-                                            <div class="grid grid-cols-2 gap-2 mt-3 border-t pt-3">
-                                                <div>
-                                                    <p class="text-[10px] text-gray-400 uppercase font-bold">Base</p>
-                                                    <p class="font-semibold text-green-600">${formatCurrency(sale.baseCommissionUnit)}</p>
-                                                </div>
-                                                <div class="flex gap-1 justify-end items-center">
-                                                    ${sale.inMix && html`<span class="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">Mix</span>`}
-                                                    ${sale.isFinanced && html`<span class="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">Finan</span>`}
+                                            <div class="flex justify-between items-center mt-1.5 pt-1.5 border-t border-gray-50">
+                                                <p class="font-black text-green-600 text-[13px]">${formatCurrency(sale.baseCommissionUnit)}</p>
+                                                <div class="flex gap-1 items-center">
+                                                    ${sale.inMix && html`<span class="bg-blue-50 text-blue-600 text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">Mix</span>`}
+                                                    ${sale.isFinanced && html`<span class="bg-purple-50 text-purple-600 text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-tighter">Fin</span>`}
                                                 </div>
                                             </div>
                                         </div>
                                         ${!isClosed && html`
-                                            <button onClick=${() => onDeleteSale(sale.id)} class="w-12 -mr-4 -my-4 flex items-center justify-center bg-red-50 text-red-500 border-l border-red-100 active:bg-red-200 transition-colors">
-                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                            <button onClick=${() => { if(confirm('¿Eliminar esta venta?')) onDeleteSale(sale.id); }} 
+                                                    class="w-10 h-10 -mr-2 ml-2 flex items-center justify-center text-red-200 hover:text-red-500 active:bg-red-50 rounded-full transition-all">
+                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                                             </button>
                                         `}
                                     </div>
