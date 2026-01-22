@@ -1,13 +1,11 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ComisApp</title>
+    <title>ComisApp - Gestión de Comisiones</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Prevents pull-to-refresh on mobile and ensures full height */
         html, body {
             height: 100%;
             overflow-x: hidden;
@@ -16,20 +14,580 @@
         #root {
             height: 100%;
         }
+        /* Custom scrollbar for mobile feel */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
     </style>
 <script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
     "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
   }
 }
 </script>
 <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-gray-50 text-gray-900 font-sans">
+<body class="bg-gray-100 text-gray-900 font-sans">
     <div id="root"></div>
+
+    <script type="module">
+        import React from 'https://esm.sh/react@19.0.0';
+        import ReactDOM from 'https://esm.sh/react-dom@19.0.0/client';
+        import htm from 'https://esm.sh/htm';
+
+        const html = htm.bind(React.createElement);
+        const { useState, useEffect, useMemo } = React;
+
+        // --- CONSTANTS ---
+        const VAT_RATE = 1.21;
+        const LS_KEY = 'comisapp_store_v2';
+        
+        const INITIAL_PARAMS = {
+            baseCommissionRate: 0.005,
+            weights: { volume: 0.30, mix: 0.20, financing: 0.30, quality: 0.20 },
+            tiers: {
+                volume: [
+                    { id: 'v1', threshold: 6, percentage: 0.50 },
+                    { id: 'v2', threshold: 8, percentage: 0.75 },
+                    { id: 'v3', threshold: 10, percentage: 1.00 }
+                ],
+                mix: [
+                    { id: 'm1', threshold: 0.30, percentage: 0.30 },
+                    { id: 'm2', threshold: 0.50, percentage: 0.50 },
+                    { id: 'm3', threshold: 0.60, percentage: 0.60 }
+                ],
+                financing: [
+                    { id: 'f1', threshold: 0.15, percentage: 0.50 },
+                    { id: 'f2', threshold: 0.30, percentage: 0.75 },
+                    { id: 'f3', threshold: 0.40, percentage: 1.00 }
+                ],
+                quality: [
+                    { id: 'q1', threshold: 4.60, percentage: 0.50 },
+                    { id: 'q2', threshold: 4.70, percentage: 0.75 },
+                    { id: 'q3', threshold: 4.78, percentage: 1.00 }
+                ]
+            }
+        };
+
+        const Tab = {
+            SALES: 'SALES',
+            SUMMARY: 'SUMMARY',
+            HISTORY: 'HISTORY',
+            PARAMS: 'PARAMS'
+        };
+
+        // --- UTILS ---
+        const formatCurrency = (val) => val.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+        const formatPercent = (val) => (val * 100).toFixed(1) + '%';
+        const findTierPercentage = (value, tiers) => {
+            const sortedTiers = [...tiers].sort((a, b) => b.threshold - a.threshold);
+            const metTier = sortedTiers.find(t => value >= t.threshold);
+            return metTier ? metTier.percentage : 0;
+        };
+
+        // --- COMPONENTS ---
+
+        const Layout = ({ activeTab, setActiveTab, children, activeMonthId, isClosed }) => {
+            const TabButton = ({ id, label, iconPath }) => html`
+                <button onClick=${() => setActiveTab(id)} 
+                        class=${`flex flex-col items-center p-2 rounded-lg transition-all flex-1 ${activeTab === id ? 'text-indigo-600 bg-indigo-50 scale-105' : 'text-gray-400 hover:text-indigo-300'}`}>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d=${iconPath} />
+                    </svg>
+                    <span class="text-[9px] font-black mt-1 uppercase">${label}</span>
+                </button>
+            `;
+
+            return html`
+                <div class="flex flex-col h-full max-w-md mx-auto bg-white shadow-xl relative">
+                    <header class="bg-indigo-600 text-white p-4 shadow-md sticky top-0 z-30 flex justify-between items-center">
+                        <div>
+                            <h1 class="text-xl font-black tracking-tight leading-none">ComisApp</h1>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="text-[10px] font-bold opacity-80 uppercase">${activeMonthId}</span>
+                                <span class=${`text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider ${isClosed ? 'bg-red-500 text-white' : 'bg-green-400 text-indigo-900'}`}>
+                                    ${isClosed ? 'Cerrado' : 'Abierto'}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-[10px] bg-indigo-500 px-2 py-1 rounded font-bold uppercase tracking-tighter">Versión Estática</span>
+                        </div>
+                    </header>
+
+                    <main class="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50">
+                        ${children}
+                    </main>
+
+                    <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 flex justify-around p-1 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-30">
+                        <${TabButton} id=${Tab.SALES} label="Ventas" iconPath="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <${TabButton} id=${Tab.SUMMARY} label="Cierre" iconPath="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        <${TabButton} id=${Tab.HISTORY} label="Historial" iconPath="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <${TabButton} id=${Tab.PARAMS} label="Config" iconPath="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    </nav>
+                </div>
+            `;
+        };
+
+        const SalesView = ({ sales, params, activeMonth, isClosed, onAddSale, onDeleteSale, onClearAll, onMonthChange }) => {
+            const [formData, setFormData] = useState({
+                date: new Date().toISOString().split('T')[0],
+                client: '', model: '', priceWithVat: '', inMix: false, isFinanced: false
+            });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (isClosed) return;
+                if (!formData.client || !formData.model || !formData.priceWithVat) return;
+
+                const priceWithVat = parseFloat(formData.priceWithVat);
+                const priceWithoutVat = priceWithVat / VAT_RATE;
+                const baseCommissionUnit = priceWithoutVat * params.baseCommissionRate;
+                const id = Date.now().toString(36) + Math.random().toString(36).substring(2);
+
+                onAddSale({
+                    id, date: formData.date, client: formData.client, model: formData.model,
+                    priceWithVat, inMix: formData.inMix, isFinanced: formData.isFinanced,
+                    priceWithoutVat, baseCommissionUnit
+                });
+
+                setFormData({ ...formData, client: '', model: '', priceWithVat: '', inMix: false, isFinanced: false });
+            };
+
+            return html`
+                <div class="space-y-6">
+                    <section class=${`p-4 rounded-xl border flex items-center justify-between ${isClosed ? 'bg-gray-100 border-gray-200' : 'bg-indigo-50 border-indigo-100'}`}>
+                        <div>
+                            <label class="text-[10px] font-bold text-gray-500 uppercase block">Periodo Activo</label>
+                            <input type="month" value=${activeMonth} onChange=${e => onMonthChange(e.target.value)} class="bg-transparent font-bold text-indigo-800 outline-none" />
+                        </div>
+                        <div class="text-right">
+                            <span class=${`text-[10px] px-2 py-1 rounded font-bold uppercase ${isClosed ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
+                                ${isClosed ? 'Mes Cerrado' : 'Mes Abierto'}
+                            </span>
+                        </div>
+                    </section>
+
+                    ${!isClosed && html`
+                        <section class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                            <h2 class="text-lg font-bold mb-4 text-indigo-800">Nueva Venta</h2>
+                            <form onSubmit=${handleSubmit} class="space-y-4">
+                                <div class="grid grid-cols-1 gap-3">
+                                    <input type="date" value=${formData.date} onChange=${e => setFormData({...formData, date: e.target.value})} class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    <input type="text" placeholder="Cliente" value=${formData.client} onChange=${e => setFormData({...formData, client: e.target.value})} class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    <input type="text" placeholder="Modelo" value=${formData.model} onChange=${e => setFormData({...formData, model: e.target.value})} class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                    <input type="number" step="0.01" placeholder="Precio Final ($)" value=${formData.priceWithVat} onChange=${e => setFormData({...formData, priceWithVat: e.target.value})} class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none" />
+                                </div>
+                                <div class="flex gap-3">
+                                    <label class="flex-1 flex items-center justify-center gap-2 p-3 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 active:bg-gray-200 transition-colors">
+                                        <input type="checkbox" checked=${formData.inMix} onChange=${e => setFormData({...formData, inMix: e.target.checked})} class="w-5 h-5 text-indigo-600 rounded" />
+                                        <span class="text-sm font-medium">Mix</span>
+                                    </label>
+                                    <label class="flex-1 flex items-center justify-center gap-2 p-3 border border-gray-300 rounded-lg cursor-pointer bg-gray-50 active:bg-gray-200 transition-colors">
+                                        <input type="checkbox" checked=${formData.isFinanced} onChange=${e => setFormData({...formData, isFinanced: e.target.checked})} class="w-5 h-5 text-indigo-600 rounded" />
+                                        <span class="text-sm font-medium">Finan</span>
+                                    </label>
+                                </div>
+                                <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-indigo-700 active:scale-95 transition-transform">Guardar Venta</button>
+                            </form>
+                        </section>
+                    `}
+
+                    <section>
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-lg font-bold flex items-center gap-2">Registro <span class="text-sm bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full">${sales.length} ops.</span></h2>
+                            ${!isClosed && sales.length > 0 && html`
+                                <button onClick=${onClearAll} class="text-xs font-bold text-red-500 uppercase px-2 py-1 hover:bg-red-50 rounded transition-colors">Limpiar Mes</button>
+                            `}
+                        </div>
+                        
+                        ${sales.length === 0 ? html`
+                            <div class="text-center py-10 text-gray-400 bg-white rounded-xl border border-dashed border-gray-300">No hay ventas registradas.</div>
+                        ` : html`
+                            <div class="space-y-3">
+                                ${[...sales].reverse().map(sale => html`
+                                    <div key=${sale.id} class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm relative overflow-hidden flex">
+                                        <div class="flex-1">
+                                            <div class="flex justify-between items-start mb-2">
+                                                <div>
+                                                    <h3 class="font-bold text-gray-800 leading-tight">${sale.client}</h3>
+                                                    <p class="text-sm text-gray-500">${sale.model}</p>
+                                                </div>
+                                                <p class="text-[10px] font-mono text-gray-400 bg-gray-50 px-1 rounded">${sale.date}</p>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2 mt-3 border-t pt-3">
+                                                <div>
+                                                    <p class="text-[10px] text-gray-400 uppercase font-bold">Base</p>
+                                                    <p class="font-semibold text-green-600">${formatCurrency(sale.baseCommissionUnit)}</p>
+                                                </div>
+                                                <div class="flex gap-1 justify-end items-center">
+                                                    ${sale.inMix && html`<span class="bg-blue-100 text-blue-800 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">Mix</span>`}
+                                                    ${sale.isFinanced && html`<span class="bg-purple-100 text-purple-800 text-[10px] px-1.5 py-0.5 rounded font-bold uppercase">Finan</span>`}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        ${!isClosed && html`
+                                            <button onClick=${() => onDeleteSale(sale.id)} class="w-12 -mr-4 -my-4 flex items-center justify-center bg-red-50 text-red-500 border-l border-red-100 active:bg-red-200 transition-colors">
+                                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                            </button>
+                                        `}
+                                    </div>
+                                `)}
+                            </div>
+                        `}
+                    </section>
+                </div>
+            `;
+        };
+
+        const SummaryView = ({ sales, params, qualityScore, setQualityScore, isClosed, savedSummary, onCloseMonth }) => {
+            const calculatedSummary = useMemo(() => {
+                if (isClosed && savedSummary) return savedSummary;
+
+                const totalUnits = sales.length;
+                const totalBaseCommission = sales.reduce((sum, s) => sum + s.baseCommissionUnit, 0);
+                const mixSales = sales.filter(s => s.inMix).length;
+                const mixPercentage = totalUnits > 0 ? mixSales / totalUnits : 0;
+                const financedSales = sales.filter(s => s.isFinanced).length;
+                const financingPercentage = totalUnits > 0 ? financedSales / totalUnits : 0;
+
+                const volTierPct = findTierPercentage(totalUnits, params.tiers.volume);
+                const volumeBonus = totalBaseCommission * params.weights.volume * volTierPct;
+                
+                const mixTierPct = findTierPercentage(mixPercentage, params.tiers.mix);
+                const mixBonus = totalBaseCommission * params.weights.mix * mixTierPct;
+                
+                const finTierPct = findTierPercentage(financingPercentage, params.tiers.financing);
+                const financingBonus = totalBaseCommission * params.weights.financing * finTierPct;
+                
+                const qualTierPct = findTierPercentage(qualityScore, params.tiers.quality);
+                const qualityBonus = totalBaseCommission * params.weights.quality * qualTierPct;
+
+                const finalCommission = totalBaseCommission + volumeBonus + mixBonus + financingBonus + qualityBonus;
+
+                return { 
+                    totalUnits, totalBaseCommission, volumeBonus, mixBonus, financingBonus, qualityBonus, finalCommission, 
+                    stats: { mixPercentage, financingPercentage, qualityScore } 
+                };
+            }, [sales, params, qualityScore, isClosed, savedSummary]);
+
+            const hasSales = sales.length > 0;
+            const hasQuality = qualityScore > 0;
+            const canClose = hasSales && hasQuality;
+
+            return html`
+                <div class="space-y-6">
+                    <section class=${`${isClosed ? 'bg-gray-800' : 'bg-indigo-600'} text-white p-6 rounded-2xl shadow-lg relative overflow-hidden transition-colors`}>
+                        <p class="text-[10px] uppercase font-bold opacity-80 mb-1 leading-none">
+                            ${isClosed ? 'Comisión Consolidada Final' : 'Proyección de Comisión'}
+                        </p>
+                        <h2 class="text-4xl font-black">${formatCurrency(calculatedSummary.finalCommission)}</h2>
+                        <div class="mt-4 grid grid-cols-2 gap-4 border-t border-white/20 pt-4">
+                            <div><p class="text-[10px] uppercase font-bold opacity-70">Unidades</p><p class="text-xl font-bold">${calculatedSummary.totalUnits}</p></div>
+                            <div><p class="text-[10px] uppercase font-bold opacity-70">Base Total</p><p class="text-xl font-bold">${formatCurrency(calculatedSummary.totalBaseCommission)}</p></div>
+                        </div>
+                    </section>
+
+                    <section class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                        <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Desglose de Incentivos</h3>
+                        ${[
+                            { label: 'Volumen', val: calculatedSummary.volumeBonus, detail: `${calculatedSummary.totalUnits} uds.`, tier: findTierPercentage(calculatedSummary.totalUnits, params.tiers.volume) },
+                            { label: 'Mix de Ventas', val: calculatedSummary.mixBonus, detail: formatPercent(calculatedSummary.stats.mixPercentage), tier: findTierPercentage(calculatedSummary.stats.mixPercentage, params.tiers.mix) },
+                            { label: 'Financiación', val: calculatedSummary.financingBonus, detail: formatPercent(calculatedSummary.stats.financingPercentage), tier: findTierPercentage(calculatedSummary.stats.financingPercentage, params.tiers.financing) },
+                        ].map(item => html`
+                            <div key=${item.label} class="flex justify-between items-center pb-2 border-b border-gray-50">
+                                <div><p class="font-bold text-gray-800 text-sm leading-none mb-1">${item.label}</p><p class="text-[10px] text-gray-400">Logro: ${item.detail}</p></div>
+                                <div class="text-right"><p class="font-bold text-indigo-600 leading-none mb-1">+${formatCurrency(item.val)}</p><p class="text-[10px] text-gray-400">Nivel: ${formatPercent(item.tier)}</p></div>
+                            </div>
+                        `)}
+                        
+                        <div class="flex justify-between items-center">
+                            <div>
+                                <p class="font-bold text-gray-800 text-sm leading-none mb-1">Calidad (CSAT)</p>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[10px] text-gray-400 uppercase">Score:</span>
+                                    <input type="number" step="0.01" min="0" max="5" value=${qualityScore} disabled=${isClosed} 
+                                           onChange=${e => setQualityScore(Math.min(5, Math.max(0, parseFloat(e.target.value) || 0)))} 
+                                           class=${`w-14 px-1 border-b text-xs focus:outline-none focus:border-indigo-500 bg-transparent disabled:border-none font-black ${!hasQuality && !isClosed ? 'border-red-500 text-red-500 bg-red-50' : 'border-gray-300 text-gray-800'}`} />
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-bold text-indigo-600 leading-none mb-1">+${formatCurrency(calculatedSummary.qualityBonus)}</p>
+                                <p class="text-[10px] text-gray-400">Nivel: ${formatPercent(findTierPercentage(calculatedSummary.stats.qualityScore, params.tiers.quality))}</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    ${!isClosed && html`
+                        <section class="space-y-3">
+                            ${!canClose && html`
+                                <div class="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3 shadow-sm">
+                                    <div class="bg-amber-100 p-1.5 rounded-lg">
+                                        <svg class="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                                    </div>
+                                    <div class="text-[11px] text-amber-900 leading-snug">
+                                        <p class="font-black uppercase tracking-wider mb-1">Bloqueo de Cierre</p>
+                                        <ul class="space-y-1">
+                                            <li class=${`flex items-center gap-1.5 ${hasSales ? 'text-gray-400 line-through' : 'font-bold'}`}>
+                                                <span class=${`w-1 h-1 rounded-full ${hasSales ? 'bg-gray-300' : 'bg-amber-500 animate-pulse'}`}></span>
+                                                Cargar al menos una venta.
+                                            </li>
+                                            <li class=${`flex items-center gap-1.5 ${hasQuality ? 'text-gray-400 line-through' : 'font-bold'}`}>
+                                                <span class=${`w-1 h-1 rounded-full ${hasQuality ? 'bg-gray-300' : 'bg-amber-500 animate-pulse'}`}></span>
+                                                Calidad mayor a 0.
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            `}
+                            
+                            <button disabled=${!canClose}
+                                onClick=${() => { if(confirm('¿CERRAR MES? Esta acción es inmutable.')) onCloseMonth(calculatedSummary); }}
+                                class=${`w-full font-black py-4 rounded-xl shadow-lg transition-all uppercase tracking-[0.2em] text-sm ${canClose ? 'bg-orange-600 text-white hover:bg-orange-700 active:scale-95' : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'}`}>
+                                Consolidar y Cerrar
+                            </button>
+                        </section>
+                    `}
+
+                    ${isClosed && html`
+                        <div class="bg-green-100 p-5 rounded-xl text-center border border-green-200 shadow-inner">
+                            <div class="w-10 h-10 bg-green-500 text-white rounded-full flex items-center justify-center mx-auto mb-2 shadow-sm">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"/></svg>
+                            </div>
+                            <p class="text-sm font-black text-green-800 uppercase tracking-widest leading-none">Cierre Consolidado</p>
+                            <p class="text-[10px] text-green-700 mt-2 font-medium">Este periodo ha sido bloqueado y no permite modificaciones.</p>
+                        </div>
+                    `}
+                </div>
+            `;
+        };
+
+        const ParametersView = ({ params, isClosed, setParams }) => {
+            const updateWeight = (key, value) => {
+                if (isClosed) return;
+                const num = parseFloat(value) || 0;
+                setParams({ ...params, weights: { ...params.weights, [key]: num } });
+            };
+
+            const updateTier = (category, index, field, value) => {
+                if (isClosed) return;
+                const num = parseFloat(value) || 0;
+                const newTiers = [...params.tiers[category]];
+                newTiers[index] = { ...newTiers[index], [field]: num };
+                setParams({ ...params, tiers: { ...params.tiers, [category]: newTiers } });
+            };
+
+            return html`
+                <div class="space-y-6">
+                    ${isClosed && html`
+                        <div class="bg-red-50 p-4 rounded-xl border border-red-200 text-red-800 text-sm font-bold text-center">
+                            Mes Cerrado: Configuración bloqueada.
+                        </div>
+                    `}
+                    
+                    <section class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                        <h2 class="text-lg font-bold mb-4 text-indigo-800">Comisión Base (%)</h2>
+                        <input type="number" step="0.01" disabled=${isClosed} value=${params.baseCommissionRate * 100}
+                               onChange=${e => setParams({...params, baseCommissionRate: (parseFloat(e.target.value) || 0) / 100})}
+                               class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50" />
+                    </section>
+
+                    <section class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                        <h2 class="text-lg font-bold mb-4 text-indigo-800">Pesos de Indicadores</h2>
+                        <div class="grid grid-cols-2 gap-4">
+                            ${Object.entries(params.weights).map(([key, val]) => html`
+                                <div key=${key}>
+                                    <label class="block text-xs font-bold text-gray-500 uppercase">${key}</label>
+                                    <input type="number" step="0.01" disabled=${isClosed} value=${val}
+                                           onChange=${e => updateWeight(key, e.target.value)}
+                                           class="w-full p-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-50" />
+                                </div>
+                            `)}
+                        </div>
+                    </section>
+
+                    ${[
+                        { key: 'volume', title: 'Volumen (Unidades)', isPercent: false },
+                        { key: 'mix', title: 'Mix (%)', isPercent: true },
+                        { key: 'financing', title: 'Financiación (%)', isPercent: true },
+                        { key: 'quality', title: 'Calidad (Puntaje)', isPercent: false }
+                    ].map(cat => html`
+                        <section key=${cat.key} class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                            <h2 class="text-md font-bold mb-3 text-indigo-700">${cat.title}</h2>
+                            <div class="space-y-2">
+                                <div class="grid grid-cols-2 gap-2"><span class="text-[9px] uppercase font-bold text-gray-400">Umbral</span><span class="text-[9px] uppercase font-bold text-gray-400">Premio (%)</span></div>
+                                ${params.tiers[cat.key].map((tier, idx) => html`
+                                    <div key=${tier.id} class="grid grid-cols-2 gap-2">
+                                        <input type="number" step="0.01" disabled=${isClosed}
+                                               value=${cat.isPercent ? (tier.threshold * 100).toFixed(1) : tier.threshold}
+                                               onChange=${e => updateTier(cat.key, idx, 'threshold', cat.isPercent ? (parseFloat(e.target.value)/100).toString() : e.target.value)}
+                                               class="p-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-50" />
+                                        <input type="number" step="1" disabled=${isClosed}
+                                               value=${tier.percentage * 100}
+                                               onChange=${e => updateTier(cat.key, idx, 'percentage', (parseFloat(e.target.value)/100).toString())}
+                                               class="p-2 border border-gray-300 rounded-lg text-sm disabled:bg-gray-50" />
+                                    </div>
+                                `)}
+                            </div>
+                        </section>
+                    `)}
+                </div>
+            `;
+        };
+
+        const HistoryView = ({ months, onViewMonth, onExport, onImport }) => {
+            const closedMonths = Object.entries(months)
+                .filter(([_, data]) => data.status === 'closed')
+                .sort(([idA], [idB]) => idB.localeCompare(idA));
+
+            return html`
+                <div class="space-y-6">
+                    <section class="bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                        <h2 class="text-sm font-bold text-gray-400 uppercase mb-3 text-center">Gestión de Datos</h2>
+                        <div class="flex gap-2">
+                            <button onClick=${onExport} class="flex-1 bg-indigo-50 text-indigo-600 font-bold py-3 rounded-lg text-[10px] uppercase border border-indigo-100 flex items-center justify-center gap-2">
+                                Exportar Backup
+                            </button>
+                            <label class="flex-1 bg-gray-50 text-gray-600 font-bold py-3 rounded-lg text-[10px] uppercase border border-gray-200 flex items-center justify-center gap-2 cursor-pointer">
+                                Importar
+                                <input type="file" class="hidden" accept=".json" onChange=${onImport} />
+                            </label>
+                        </div>
+                    </section>
+
+                    <section>
+                        <h2 class="text-lg font-bold mb-4 text-gray-700">Historial de Cierres</h2>
+                        ${closedMonths.length === 0 ? html`
+                            <div class="text-center py-10 text-gray-400 bg-white rounded-xl border border-dashed border-gray-300 px-6">
+                                <p class="text-sm italic">No hay cierres aún.</p>
+                            </div>
+                        ` : html`
+                            <div class="space-y-4">
+                                ${closedMonths.map(([id, data]) => html`
+                                    <button key=${id} onClick=${() => onViewMonth(id)}
+                                            class="w-full bg-white p-5 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center text-left hover:border-indigo-300 transition-colors group">
+                                        <div>
+                                            <h3 class="text-xl font-black text-indigo-900">${id}</h3>
+                                            <div class="flex gap-2 mt-1">
+                                                <span class="text-[10px] font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded uppercase">CONSOLIDADO</span>
+                                            </div>
+                                        </div>
+                                        <div class="text-right">
+                                            <p class="text-lg font-bold text-indigo-600">${data.summary ? formatCurrency(data.summary.finalCommission) : 'N/A'}</p>
+                                            <span class="text-[9px] text-gray-300 uppercase font-bold group-hover:text-indigo-400">Ver →</span>
+                                        </div>
+                                    </button>
+                                `)}
+                            </div>
+                        `}
+                    </section>
+                </div>
+            `;
+        };
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState(Tab.SALES);
+            const [store, setStore] = useState(() => {
+                const saved = localStorage.getItem(LS_KEY);
+                if (saved) return JSON.parse(saved);
+                const initialMonth = new Date().toISOString().slice(0, 7);
+                return {
+                    activeMonth: initialMonth,
+                    months: {
+                        [initialMonth]: { status: 'open', sales: [], parameters: INITIAL_PARAMS, qualityScore: 0, summary: null }
+                    }
+                };
+            });
+
+            useEffect(() => { localStorage.setItem(LS_KEY, JSON.stringify(store)); }, [store]);
+
+            const activeMonthId = store.activeMonth;
+            const activeMonthData = useMemo(() => store.months[activeMonthId] || {
+                status: 'open', sales: [], parameters: INITIAL_PARAMS, qualityScore: 0, summary: null
+            }, [store.months, activeMonthId]);
+
+            const isClosed = activeMonthData.status === 'closed';
+
+            const handleMonthChange = (newMonth) => {
+                setStore(prev => {
+                    const newMonths = { ...prev.months };
+                    if (!newMonths[newMonth]) {
+                        newMonths[newMonth] = {
+                            status: 'open', sales: [],
+                            parameters: prev.months[prev.activeMonth]?.parameters || INITIAL_PARAMS,
+                            qualityScore: 0, summary: null
+                        };
+                    }
+                    return { ...prev, activeMonth: newMonth, months: newMonths };
+                });
+            };
+
+            const updateActiveMonth = (updates) => {
+                if (isClosed && !updates.status) return;
+                setStore(prev => ({
+                    ...prev, months: { ...prev.months, [activeMonthId]: { ...prev.months[activeMonthId], ...updates } }
+                }));
+            };
+
+            const handleCloseMonth = (summary) => {
+                updateActiveMonth({ status: 'closed', summary, closedAt: new Date().toISOString() });
+                setActiveTab(Tab.HISTORY);
+            };
+
+            const handleExport = () => {
+                const blob = new Blob([JSON.stringify(store, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `comisapp_backup_${activeMonthId}.json`; a.click();
+            };
+
+            const handleImport = (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    try {
+                        const imported = JSON.parse(evt.target.result);
+                        if (confirm('¿Importar? Se borrarán los datos actuales.')) {
+                            setStore(imported);
+                            window.location.reload();
+                        }
+                    } catch { alert('Error al cargar archivo'); }
+                };
+                reader.readAsText(file);
+            };
+
+            const content = () => {
+                switch (activeTab) {
+                    case Tab.SALES: return html`<${SalesView} sales=${activeMonthData.sales} params=${activeMonthData.parameters} activeMonth=${activeMonthId} isClosed=${isClosed} 
+                        onAddSale=${(s) => updateActiveMonth({ sales: [...activeMonthData.sales, s] })} 
+                        onDeleteSale=${(id) => updateActiveMonth({ sales: activeMonthData.sales.filter(x => x.id !== id) })} 
+                        onClearAll=${() => updateActiveMonth({ sales: [] })} 
+                        onMonthChange=${handleMonthChange} />`;
+                    case Tab.SUMMARY: return html`<${SummaryView} sales=${activeMonthData.sales} params=${activeMonthData.parameters} qualityScore=${activeMonthData.qualityScore} isClosed=${isClosed} savedSummary=${activeMonthData.summary}
+                        setQualityScore=${(v) => updateActiveMonth({ qualityScore: v })}
+                        onCloseMonth=${handleCloseMonth} />`;
+                    case Tab.HISTORY: return html`<${HistoryView} months=${store.months} onViewMonth=${(id) => { handleMonthChange(id); setActiveTab(Tab.SALES); }} onExport=${handleExport} onImport=${handleImport} />`;
+                    case Tab.PARAMS: return html`<${ParametersView} params=${activeMonthData.parameters} isClosed=${isClosed} setParams=${(p) => updateActiveMonth({ parameters: p })} />`;
+                }
+            };
+
+            return html`<${Layout} activeTab=${activeTab} setActiveTab=${setActiveTab} activeMonthId=${activeMonthId} isClosed=${isClosed}>${content()}<//>`;
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(html`<${App} />`);
+    </script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
