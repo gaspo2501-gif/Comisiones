@@ -1,5 +1,5 @@
 {
-  "name": "Calculadora de Comisiones Pro",
-  "description": "Aplicación para el seguimiento y cálculo de comisiones por ventas con indicadores de volumen, mix, financiación y calidad.",
+  "name": "ComisApp - Calculador de Comisiones",
+  "description": "Una aplicación web progresiva para el seguimiento y cálculo de comisiones de ventas con parámetros personalizables y funcionamiento offline.",
   "requestFramePermissions": []
 }
