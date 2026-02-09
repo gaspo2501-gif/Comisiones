@@ -43,17 +43,10 @@
 
         const html = htm.bind(React.createElement);
 
-        // --- CONSTANTES ---
-        const VAT_RATE = 1.21;
-        const AMAROK_VAT_RATE = 1.105;
-        const AMAROK_FIXED_DEDUCTION = 209800;
-        const USED_COMMISSION_RATE = 0.005;
-        const RETENTION_RATE = 0.21;
-        const MOVISTAR_FIXED_DEDUCTION = 6700;
-
+        // --- VALORES INICIALES ---
         const Tab = {
             SALES: 'SALES',
-            PARAMS: 'PARAMS',
+            CONFIG: 'CONFIG',
             SUMMARY: 'SUMMARY',
             HISTORY: 'HISTORY',
             NET_ESTIMATED: 'NET_ESTIMATED'
@@ -62,6 +55,9 @@
         const INITIAL_PARAMS = {
             baseCommissionRate: 0.005,
             promoCommissionRate: 0.003,
+            amarokFixedDeduction: 209800,
+            retentionRate: 0.21,
+            movistarFixedDeduction: 6700,
             weights: { volume: 0.30, mix: 0.20, financing: 0.30, quality: 0.20 },
             tiers: {
                 volume: [
@@ -85,6 +81,14 @@
                     { id: 'q3', threshold: 4.78, percentage: 1.00 }
                 ]
             }
+        };
+
+        // --- HELPER FUNCTIONS ---
+        const findTierPercentage = (value, tiers) => {
+            if (!tiers) return 0;
+            const sortedTiers = [...tiers].sort((a, b) => b.threshold - a.threshold);
+            const metTier = sortedTiers.find(t => value >= t.threshold);
+            return metTier ? metTier.percentage : 0;
         };
 
         // --- COMPONENTES ---
@@ -115,7 +119,7 @@
                             </div>
                         </div>
                         <div className="text-right">
-                           <span className="text-[10px] bg-indigo-500 px-2 py-1 rounded font-bold">v3.0</span>
+                           <span className="text-[10px] bg-indigo-500 px-2 py-1 rounded font-bold">v4.0</span>
                         </div>
                     </header>
                     <main className="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50">
@@ -126,35 +130,35 @@
                         <${TabButton} tab=${Tab.SUMMARY} label="Cierre" icon="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         <${TabButton} tab=${Tab.NET_ESTIMATED} label="Neto" icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         <${TabButton} tab=${Tab.HISTORY} label="Historial" icon="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        <${TabButton} tab=${Tab.PARAMS} label="Config" icon="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                        <${TabButton} tab=${Tab.CONFIG} label="Config" icon="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     </nav>
                 </div>
             `;
         };
 
-        const SalesView = ({ sales, params, activeMonth, isClosed, onAddSale, onUpdateSale, onDeleteSale, onClearAll, onMonthChange }) => {
+        const SalesView = ({ sales, params, activeMonth, isClosed, onAddSale, onUpdateSale, onDeleteSale, onMonthChange }) => {
             const [editingId, setEditingId] = useState(null);
             const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], client: '', model: '', priceWithVat: '', inMix: false, isFinanced: false, priceType: 'STANDARD', hasUsed: false, usedValue: '' });
 
-            const formatCurrency = (val) => val.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+            const formatCurrency = (val) => (val || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
 
             const handleSubmit = (e) => {
                 e.preventDefault();
                 if (isClosed) return;
                 
                 const isAmarok = formData.model.toLowerCase().includes('amarok');
-                const vehicleVatDivisor = isAmarok ? AMAROK_VAT_RATE : VAT_RATE;
-                const priceWithVat = parseFloat(formData.priceWithVat);
+                const vehicleVatDivisor = isAmarok ? 1.105 : 1.21;
+                const priceWithVat = parseFloat(formData.priceWithVat) || 0;
                 const priceWithoutVat = priceWithVat / vehicleVatDivisor;
                 
                 let taxableBase = priceWithoutVat;
-                if (isAmarok) taxableBase = Math.max(0, priceWithoutVat - AMAROK_FIXED_DEDUCTION);
+                if (isAmarok) taxableBase = Math.max(0, priceWithoutVat - (params.amarokFixedDeduction || 209800));
 
-                const rate = formData.priceType === 'STANDARD' ? params.baseCommissionRate : params.promoCommissionRate;
+                const rate = formData.priceType === 'STANDARD' ? (params.baseCommissionRate || 0.005) : (params.promoCommissionRate || 0.003);
                 const vehicleCommission = taxableBase * rate;
                 
                 const usedVal = formData.hasUsed ? (parseFloat(formData.usedValue) || 0) : 0;
-                const usedCommission = (usedVal / VAT_RATE) * USED_COMMISSION_RATE;
+                const usedCommission = (usedVal / 1.21) * 0.005;
                 
                 const saleData = {
                     ...formData,
@@ -175,7 +179,7 @@
             };
 
             return html`
-                <div className="space-y-6">
+                <div className="space-y-6 animate-fade-in">
                     <section className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
                         <div>
                             <label className="text-[10px] font-bold text-gray-500 uppercase block">Periodo</label>
@@ -202,7 +206,7 @@
                     `}
 
                     <div className="space-y-3">
-                        ${sales.map(sale => html`
+                        ${sales.length === 0 ? html`<div className="p-10 text-center text-gray-400 italic text-sm">Sin ventas este mes</div>` : sales.map(sale => html`
                             <div key=${sale.id} className="bg-white p-4 rounded-xl border shadow-sm flex justify-between items-center group relative overflow-hidden">
                                 <div>
                                     <h3 className="font-bold text-sm uppercase">${sale.client}</h3>
@@ -224,19 +228,230 @@
             `;
         };
 
-        const NetEstimatedView = ({ sales, params, qualityScore, isClosed, vacationAllowance, transportAllowance, setVacationAllowance, setTransportAllowance, savedSummary }) => {
-            const formatCurrency = (val) => val.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+        const ConfigView = ({ params, setParams, isClosed }) => {
+            const updateParam = (key, value) => {
+                if (isClosed) return;
+                setParams({ ...params, [key]: value });
+            };
+
+            const updateWeight = (indicator, value) => {
+                if (isClosed) return;
+                setParams({ ...params, weights: { ...params.weights, [indicator]: parseFloat(value) || 0 } });
+            };
+
+            const updateTier = (category, index, field, value) => {
+                if (isClosed) return;
+                const newTiers = [...params.tiers[category]];
+                newTiers[index] = { ...newTiers[index], [field]: parseFloat(value) || 0 };
+                setParams({ ...params, tiers: { ...params.tiers, [category]: newTiers } });
+            };
+
+            const sections = [
+                { key: 'volume', title: 'Volumen (Unidades)', isPercent: false },
+                { key: 'mix', title: 'Mix de Ventas (%)', isPercent: true },
+                { key: 'financing', title: 'Financiación (%)', isPercent: true },
+                { key: 'quality', title: 'Calidad (Score)', isPercent: false }
+            ];
+
+            return html`
+                <div className="space-y-6 animate-fade-in">
+                    <h2 className="text-xl font-black text-indigo-900 uppercase tracking-tight">Configuración de Comisiones</h2>
+                    
+                    <section className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                        <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">1. Tasas Base</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase">Estándar (%)</label>
+                                <input type="number" step="0.01" value=${(params.baseCommissionRate * 100).toFixed(2)} onChange=${e => updateParam('baseCommissionRate', parseFloat(e.target.value)/100)} className="w-full p-2 border rounded-lg text-sm" />
+                            </div>
+                            <div>
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase">Promo (%)</label>
+                                <input type="number" step="0.01" value=${(params.promoCommissionRate * 100).toFixed(2)} onChange=${e => updateParam('promoCommissionRate', parseFloat(e.target.value)/100)} className="w-full p-2 border rounded-lg text-sm" />
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                        <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">2. Pesos de Indicadores</h3>
+                        <div className="grid grid-cols-2 gap-4">
+                            ${Object.entries(params.weights).map(([indicator, val]) => html`
+                                <div key=${indicator}>
+                                    <label className="block text-[9px] font-bold text-gray-400 uppercase">${indicator}</label>
+                                    <input type="number" step="0.01" value=${val} onChange=${e => updateWeight(indicator, e.target.value)} className="w-full p-2 border rounded-lg text-sm" />
+                                </div>
+                            `)}
+                        </div>
+                    </section>
+
+                    ${sections.map(section => html`
+                        <section key=${section.key} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                            <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">3.${section.key === 'volume' ? '1' : section.key === 'mix' ? '2' : section.key === 'financing' ? '3' : '4'} Niveles: ${section.title}</h3>
+                            <div className="space-y-2">
+                                <div className="grid grid-cols-2 gap-2 text-[8px] font-bold text-gray-300 uppercase">
+                                    <span>Umbral</span>
+                                    <span>Premio (%)</span>
+                                </div>
+                                ${params.tiers[section.key].map((tier, idx) => html`
+                                    <div key=${tier.id} className="grid grid-cols-2 gap-2">
+                                        <input type="number" step="0.01" 
+                                            value=${section.isPercent ? (tier.threshold * 100).toFixed(1) : tier.threshold} 
+                                            onChange=${e => updateTier(section.key, idx, 'threshold', section.isPercent ? parseFloat(e.target.value)/100 : e.target.value)} 
+                                            className="p-2 border rounded-lg text-sm" />
+                                        <input type="number" step="1" 
+                                            value=${tier.percentage * 100} 
+                                            onChange=${e => updateTier(section.key, idx, 'percentage', parseFloat(e.target.value)/100)} 
+                                            className="p-2 border rounded-lg text-sm" />
+                                    </div>
+                                `)}
+                            </div>
+                        </section>
+                    `)}
+
+                    <section className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                        <h3 className="text-[10px] font-black text-red-400 uppercase tracking-widest">4. Otros Parámetros</h3>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase">Deducción Amarok 0km ($)</label>
+                                <input type="number" value=${params.amarokFixedDeduction} onChange=${e => updateParam('amarokFixedDeduction', parseFloat(e.target.value) || 0)} className="w-full p-2 border rounded-lg text-sm" />
+                            </div>
+                            <div>
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase">Retenciones (%)</label>
+                                <input type="number" step="0.01" value=${(params.retentionRate * 100).toFixed(2)} onChange=${e => updateParam('retentionRate', parseFloat(e.target.value)/100)} className="w-full p-2 border rounded-lg text-sm" />
+                            </div>
+                            <div>
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase">Fijo Movistar ($)</label>
+                                <input type="number" value=${params.movistarFixedDeduction} onChange=${e => updateParam('movistarFixedDeduction', parseFloat(e.target.value) || 0)} className="w-full p-2 border rounded-lg text-sm" />
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            `;
+        };
+
+        const SummaryView = ({ sales, params, qualityScore, setQualityScore, isClosed, savedSummary, onCloseMonth }) => {
+            const formatCurrency = (val) => (val || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+            const formatPercent = (val) => ((val || 0) * 100).toFixed(1) + '%';
 
             const summary = useMemo(() => {
                 if (isClosed && savedSummary) return savedSummary;
-                const totalBase = sales.reduce((sum, s) => sum + s.baseCommissionUnit, 0);
-                // (Simulación simplificada de premios para vista previa)
-                const finalBruto = totalBase; // Simplificado para este export
-                const baseForRetentions = finalBruto + vacationAllowance;
-                const retentions = baseForRetentions * RETENTION_RATE;
-                const net = baseForRetentions - retentions + transportAllowance - MOVISTAR_FIXED_DEDUCTION;
-                return { bruto: finalBruto, retentions, net };
-            }, [sales, vacationAllowance, transportAllowance, isClosed, savedSummary]);
+
+                const totalUnits = sales.length;
+                const vehicleBaseTotal = sales.reduce((sum, s) => sum + s.vehicleCommission, 0);
+                const usedBaseTotal = sales.reduce((sum, s) => sum + s.usedCommission, 0);
+                const totalBaseCommission = vehicleBaseTotal + usedBaseTotal;
+
+                const mixSales = sales.filter(s => s.inMix).length;
+                const mixPercentage = totalUnits > 0 ? mixSales / totalUnits : 0;
+                const financedSales = sales.filter(s => s.isFinanced).length;
+                const financingPercentage = totalUnits > 0 ? financedSales / totalUnits : 0;
+
+                const volTierPct = findTierPercentage(totalUnits, params.tiers.volume);
+                const volumeBonus = vehicleBaseTotal * params.weights.volume * volTierPct;
+                
+                const mixTierPct = findTierPercentage(mixPercentage, params.tiers.mix);
+                const mixBonus = vehicleBaseTotal * params.weights.mix * mixTierPct;
+                
+                const finTierPct = findTierPercentage(financingPercentage, params.tiers.financing);
+                const financingBonus = vehicleBaseTotal * params.weights.financing * finTierPct;
+                
+                const qualTierPct = findTierPercentage(qualityScore, params.tiers.quality);
+                const qualityBonus = vehicleBaseTotal * params.weights.quality * qualTierPct;
+
+                const finalCommission = totalBaseCommission + volumeBonus + mixBonus + financingBonus + qualityBonus;
+
+                return { 
+                    totalUnits, 
+                    totalBaseCommission, 
+                    vehicleBaseTotal,
+                    usedBaseTotal,
+                    volumeBonus, 
+                    mixBonus, 
+                    financingBonus, 
+                    qualityBonus, 
+                    finalCommission,
+                    stats: { mixPercentage, financingPercentage, qualityScore } 
+                };
+            }, [sales, params, qualityScore, isClosed, savedSummary]);
+
+            return html`
+                <div className="space-y-6 animate-fade-in">
+                    <section className="bg-indigo-600 text-white p-6 rounded-2xl shadow-lg">
+                        <p className="text-[10px] uppercase font-bold opacity-60 mb-1">Comisión Bruta Proyectada</p>
+                        <h2 className="text-4xl font-black">${formatCurrency(summary.finalCommission)}</h2>
+                        <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-white/10 text-[10px] uppercase font-bold">
+                           <div><p className="opacity-60">Base 0km</p><p>${formatCurrency(summary.vehicleBaseTotal)}</p></div>
+                           <div><p className="opacity-60">Base Usados</p><p>${formatCurrency(summary.usedBaseTotal)}</p></div>
+                        </div>
+                    </section>
+
+                    <section className="bg-white p-5 rounded-xl border shadow-sm space-y-4">
+                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Premios e Indicadores</h3>
+                        
+                        <div className="flex justify-between items-center p-2 border-b">
+                            <span className="text-sm font-bold text-gray-600">Volumen (${summary.totalUnits} uds)</span>
+                            <span className="text-sm font-black text-indigo-600">+${formatCurrency(summary.volumeBonus)}</span>
+                        </div>
+
+                        <div className="flex justify-between items-center p-2 border-b">
+                            <span className="text-sm font-bold text-gray-600">Mix (${formatPercent(summary.stats.mixPercentage)})</span>
+                            <span className="text-sm font-black text-indigo-600">+${formatCurrency(summary.mixBonus)}</span>
+                        </div>
+
+                        <div className="flex justify-between items-center p-2 border-b">
+                            <span className="text-sm font-bold text-gray-600">Financiación (${formatPercent(summary.stats.financingPercentage)})</span>
+                            <span className="text-sm font-black text-indigo-600">+${formatCurrency(summary.financingBonus)}</span>
+                        </div>
+
+                        <div className="p-2 space-y-2">
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm font-bold text-gray-600">Calidad (CSAT)</span>
+                                <span className="text-sm font-black text-indigo-600">+${formatCurrency(summary.qualityBonus)}</span>
+                            </div>
+                            <input type="number" step="0.01" value=${qualityScore} disabled=${isClosed} onChange=${e => setQualityScore(parseFloat(e.target.value)||0)} className="w-full p-2 bg-gray-50 border rounded-lg text-sm font-bold" placeholder="Ingresar Puntaje CSAT" />
+                        </div>
+                    </section>
+
+                    ${!isClosed && html`
+                        <button onClick=${() => { if(confirm('¿Cerrar mes?')) onCloseMonth(summary); }} className="w-full py-4 bg-orange-600 text-white rounded-xl font-black uppercase shadow-lg">Cerrar y Consolidar</button>
+                    `}
+                </div>
+            `;
+        };
+
+        const NetEstimatedView = ({ sales, params, isClosed, vacationAllowance, transportAllowance, setVacationAllowance, setTransportAllowance, savedSummary, qualityScore }) => {
+            const formatCurrency = (val) => (val || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+
+            const summary = useMemo(() => {
+                const totalUnits = sales.length;
+                const vehicleBaseTotal = sales.reduce((sum, s) => sum + (s.vehicleCommission || 0), 0);
+                const usedBaseTotal = sales.reduce((sum, s) => sum + (s.usedCommission || 0), 0);
+                const totalBaseCommission = vehicleBaseTotal + usedBaseTotal;
+
+                const mixSales = sales.filter(s => s.inMix).length;
+                const mixPercentage = totalUnits > 0 ? mixSales / totalUnits : 0;
+                const financedSales = sales.filter(s => s.isFinanced).length;
+                const financingPercentage = totalUnits > 0 ? financedSales / totalUnits : 0;
+
+                const volTierPct = findTierPercentage(totalUnits, params.tiers.volume);
+                const volumeBonus = vehicleBaseTotal * params.weights.volume * volTierPct;
+                
+                const mixTierPct = findTierPercentage(mixPercentage, params.tiers.mix);
+                const mixBonus = vehicleBaseTotal * params.weights.mix * mixTierPct;
+                
+                const finTierPct = findTierPercentage(financingPercentage, params.tiers.financing);
+                const financingBonus = vehicleBaseTotal * params.weights.financing * finTierPct;
+                
+                const qualTierPct = findTierPercentage(qualityScore, params.tiers.quality);
+                const qualityBonus = vehicleBaseTotal * params.weights.quality * qualTierPct;
+
+                const finalCommission = totalBaseCommission + volumeBonus + mixBonus + financingBonus + qualityBonus;
+                
+                const baseForRetentions = finalCommission + (vacationAllowance || 0);
+                const retentions = baseForRetentions * (params.retentionRate || 0.21);
+                const net = baseForRetentions - retentions + (transportAllowance || 0) - (params.movistarFixedDeduction || 6700);
+                
+                return { finalCommission, retentions, net };
+            }, [sales, vacationAllowance, transportAllowance, isClosed, savedSummary, params, qualityScore]);
 
             return html`
                 <div className="space-y-6 animate-fade-in">
@@ -257,9 +472,9 @@
                     <section className="bg-indigo-600 text-white p-6 rounded-2xl shadow-xl text-center">
                         <p className="text-[10px] uppercase font-bold opacity-60 mb-2">Neto Estimado Final</p>
                         <h2 className="text-4xl font-black">${formatCurrency(summary.net)}</h2>
-                        <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-2 text-[10px] font-bold uppercase gap-4">
+                        <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-2 text-[10px] font-bold uppercase gap-4 text-left">
                             <div><p className="opacity-60">Retenciones</p><p>-${formatCurrency(summary.retentions)}</p></div>
-                            <div><p className="opacity-60">Fijo Movistar</p><p>-${formatCurrency(MOVISTAR_FIXED_DEDUCTION)}</p></div>
+                            <div><p className="opacity-60">Fijo Movistar</p><p>-${formatCurrency(params.movistarFixedDeduction || 6700)}</p></div>
                         </div>
                     </section>
                 </div>
@@ -295,31 +510,42 @@
                             onMonthChange=${m => setStore(p => ({...p, activeMonth: m, months: {...p.months, [m]: p.months[m] || {status:'open', sales:[], parameters:INITIAL_PARAMS, qualityScore:0, vacationAllowance:0, transportAllowance:0, summary:null}}}))}
                         />
                     `}
+                    ${activeTab === Tab.CONFIG && html`
+                        <${ConfigView} 
+                            params=${activeData.parameters} 
+                            isClosed=${activeData.status === 'closed'}
+                            setParams=${p => updateMonth({ parameters: p })}
+                        />
+                    `}
                     ${activeTab === Tab.NET_ESTIMATED && html`
                         <${NetEstimatedView} 
-                            sales=${activeData.sales} params=${activeData.parameters} qualityScore=${activeData.qualityScore}
+                            sales=${activeData.sales} params=${activeData.parameters}
                             isClosed=${activeData.status === 'closed'} savedSummary=${activeData.summary}
                             vacationAllowance=${activeData.vacationAllowance} transportAllowance=${activeData.transportAllowance}
                             setVacationAllowance=${v => updateMonth({ vacationAllowance: v })}
                             setTransportAllowance=${t => updateMonth({ transportAllowance: t })}
+                            qualityScore=${activeData.qualityScore}
                         />
                     `}
                     ${activeTab === Tab.SUMMARY && html`
-                        <div className="p-4 text-center">
-                            <h2 className="font-black text-gray-400 uppercase">Resumen de Cierre</h2>
-                            <p className="text-xs mt-2 italic">Funcionalidad en desarrollo para versión estática.</p>
-                            <button onClick=${() => updateMonth({status: activeData.status === 'closed' ? 'open' : 'closed'})} className="mt-6 px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold">
-                                ${activeData.status === 'closed' ? 'Abrir Mes' : 'Cerrar Mes'}
-                            </button>
-                        </div>
+                        <${SummaryView} 
+                            sales=${activeData.sales} params=${activeData.parameters} qualityScore=${activeData.qualityScore}
+                            setQualityScore=${v => updateMonth({ qualityScore: v })}
+                            isClosed=${activeData.status === 'closed'}
+                            savedSummary=${activeData.summary}
+                            onCloseMonth=${s => updateMonth({status: 'closed', summary: s})}
+                        />
                     `}
                     ${activeTab === Tab.HISTORY && html`
-                        <div className="space-y-4">
-                            <h2 className="font-black text-indigo-900 uppercase">Historial</h2>
-                            ${Object.keys(store.months).map(m => html`
-                                <div className="p-4 bg-white border rounded-xl flex justify-between items-center">
-                                    <span className="font-bold">${m}</span>
-                                    <span className="text-[10px] font-bold uppercase opacity-50">${store.months[m].status}</span>
+                        <div className="space-y-4 animate-fade-in">
+                            <h2 className="text-xl font-black text-indigo-900 uppercase">Historial de Meses</h2>
+                            ${Object.keys(store.months).sort((a,b)=>b.localeCompare(a)).map(m => html`
+                                <div className="p-4 bg-white border rounded-xl flex justify-between items-center shadow-sm">
+                                    <div>
+                                        <span className="font-black text-indigo-800">${m}</span>
+                                        <p className="text-[10px] text-gray-400 font-bold uppercase">${store.months[m].sales.length} Ventas • ${store.months[m].status}</p>
+                                    </div>
+                                    <button onClick=${() => { setStore(p => ({...p, activeMonth: m})); setActiveTab(Tab.SALES); }} className="text-xs font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full uppercase">Cargar</button>
                                 </div>
                             `)}
                         </div>
@@ -330,13 +556,6 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(html`<${App} />`);
-
-        // Register Service Worker for Offline
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed: ', err));
-            });
-        }
     </script>
 <script type="module" src="/index.tsx"></script>
 </body>
