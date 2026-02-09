@@ -4,47 +4,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    
-    <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#4f46e5">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="ComisApp">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2618/2618175.png">
-    
-    <!-- Manifest Link -->
     <link rel="manifest" href="manifest.json">
-    
     <title>ComisApp - Gestión de Comisiones</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        html, body {
-            height: 100%;
-            overflow-x: hidden;
-            overscroll-behavior-y: contain;
-        }
-        #root {
-            height: 100%;
-        }
-        /* Custom scrollbar for mobile feel */
-        ::-webkit-scrollbar {
-            width: 4px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 10px;
-        }
+        html, body { height: 100%; overflow-x: hidden; overscroll-behavior-y: contain; }
+        #root { height: 100%; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
-    <script type="importmap">
+<script type="importmap">
 {
   "imports": {
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom": "https://esm.sh/react-dom@^19.2.3",
-    "react-dom/client": "https://esm.sh/react-dom@^19.2.3/client",
+    "react": "https://esm.sh/react@^19.2.4",
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
     "react/": "https://esm.sh/react@^19.2.4/"
   }
@@ -54,8 +35,309 @@
 </head>
 <body class="bg-gray-100 text-gray-900 font-sans">
     <div id="root"></div>
-    <!-- index.tsx is automatically imported here -->
-    <script type="module" src="./index.tsx"></script>
+
+    <script type="module">
+        import React, { useState, useEffect, useMemo } from 'https://esm.sh/react@19.0.0';
+        import ReactDOM from 'https://esm.sh/react-dom@19.0.0/client';
+        import htm from 'https://esm.sh/htm';
+
+        const html = htm.bind(React.createElement);
+
+        // --- CONSTANTES ---
+        const VAT_RATE = 1.21;
+        const AMAROK_VAT_RATE = 1.105;
+        const AMAROK_FIXED_DEDUCTION = 209800;
+        const USED_COMMISSION_RATE = 0.005;
+        const RETENTION_RATE = 0.21;
+        const MOVISTAR_FIXED_DEDUCTION = 6700;
+
+        const Tab = {
+            SALES: 'SALES',
+            PARAMS: 'PARAMS',
+            SUMMARY: 'SUMMARY',
+            HISTORY: 'HISTORY',
+            NET_ESTIMATED: 'NET_ESTIMATED'
+        };
+
+        const INITIAL_PARAMS = {
+            baseCommissionRate: 0.005,
+            promoCommissionRate: 0.003,
+            weights: { volume: 0.30, mix: 0.20, financing: 0.30, quality: 0.20 },
+            tiers: {
+                volume: [
+                    { id: 'v1', threshold: 6, percentage: 0.50 },
+                    { id: 'v2', threshold: 8, percentage: 0.75 },
+                    { id: 'v3', threshold: 10, percentage: 1.00 }
+                ],
+                mix: [
+                    { id: 'm1', threshold: 0.30, percentage: 0.30 },
+                    { id: 'm2', threshold: 0.50, percentage: 0.50 },
+                    { id: 'm3', threshold: 0.60, percentage: 0.60 }
+                ],
+                financing: [
+                    { id: 'f1', threshold: 0.15, percentage: 0.50 },
+                    { id: 'f2', threshold: 0.30, percentage: 0.75 },
+                    { id: 'f3', threshold: 0.40, percentage: 1.00 }
+                ],
+                quality: [
+                    { id: 'q1', threshold: 4.60, percentage: 0.50 },
+                    { id: 'q2', threshold: 4.70, percentage: 0.75 },
+                    { id: 'q3', threshold: 4.78, percentage: 1.00 }
+                ]
+            }
+        };
+
+        // --- COMPONENTES ---
+
+        const Layout = ({ activeTab, setActiveTab, children, activeMonthId, isClosed }) => {
+            const TabButton = ({ tab, icon, label }) => {
+                const active = activeTab === tab;
+                return html`
+                    <button onClick=${() => setActiveTab(tab)} className=${`flex flex-col items-center p-2 rounded-lg transition-all flex-1 ${active ? 'text-indigo-600 bg-indigo-50 scale-105' : 'text-gray-400 hover:text-indigo-300'}`}>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d=${icon} />
+                        </svg>
+                        <span className="text-[9px] font-black mt-1 uppercase">${label}</span>
+                    </button>
+                `;
+            };
+
+            return html`
+                <div className="flex flex-col h-full max-w-md mx-auto bg-white shadow-xl relative">
+                    <header className="bg-indigo-600 text-white p-4 shadow-md sticky top-0 z-30 flex justify-between items-center">
+                        <div>
+                            <h1 className="text-xl font-black tracking-tight leading-none">ComisApp</h1>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[10px] font-bold opacity-80 uppercase">${activeMonthId}</span>
+                                <span className=${`text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider ${isClosed ? 'bg-red-500 text-white' : 'bg-green-400 text-indigo-900'}`}>
+                                    ${isClosed ? 'Cerrado' : 'Abierto'}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                           <span className="text-[10px] bg-indigo-500 px-2 py-1 rounded font-bold">v3.0</span>
+                        </div>
+                    </header>
+                    <main className="flex-1 overflow-y-auto p-4 pb-24 bg-gray-50">
+                        ${children}
+                    </main>
+                    <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-200 flex justify-around p-1 shadow-[0_-4px_10px_rgba(0,0,0,0.05)] z-30">
+                        <${TabButton} tab=${Tab.SALES} label="Ventas" icon="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <${TabButton} tab=${Tab.SUMMARY} label="Cierre" icon="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        <${TabButton} tab=${Tab.NET_ESTIMATED} label="Neto" icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <${TabButton} tab=${Tab.HISTORY} label="Historial" icon="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        <${TabButton} tab=${Tab.PARAMS} label="Config" icon="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    </nav>
+                </div>
+            `;
+        };
+
+        const SalesView = ({ sales, params, activeMonth, isClosed, onAddSale, onUpdateSale, onDeleteSale, onClearAll, onMonthChange }) => {
+            const [editingId, setEditingId] = useState(null);
+            const [formData, setFormData] = useState({ date: new Date().toISOString().split('T')[0], client: '', model: '', priceWithVat: '', inMix: false, isFinanced: false, priceType: 'STANDARD', hasUsed: false, usedValue: '' });
+
+            const formatCurrency = (val) => val.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                if (isClosed) return;
+                
+                const isAmarok = formData.model.toLowerCase().includes('amarok');
+                const vehicleVatDivisor = isAmarok ? AMAROK_VAT_RATE : VAT_RATE;
+                const priceWithVat = parseFloat(formData.priceWithVat);
+                const priceWithoutVat = priceWithVat / vehicleVatDivisor;
+                
+                let taxableBase = priceWithoutVat;
+                if (isAmarok) taxableBase = Math.max(0, priceWithoutVat - AMAROK_FIXED_DEDUCTION);
+
+                const rate = formData.priceType === 'STANDARD' ? params.baseCommissionRate : params.promoCommissionRate;
+                const vehicleCommission = taxableBase * rate;
+                
+                const usedVal = formData.hasUsed ? (parseFloat(formData.usedValue) || 0) : 0;
+                const usedCommission = (usedVal / VAT_RATE) * USED_COMMISSION_RATE;
+                
+                const saleData = {
+                    ...formData,
+                    id: editingId || Date.now().toString(),
+                    priceWithVat,
+                    priceWithoutVat,
+                    vehicleCommission,
+                    usedCommission,
+                    usedValue: usedVal,
+                    baseCommissionUnit: vehicleCommission + usedCommission
+                };
+
+                if (editingId) onUpdateSale(saleData);
+                else onAddSale(saleData);
+
+                setEditingId(null);
+                setFormData({ date: new Date().toISOString().split('T')[0], client: '', model: '', priceWithVat: '', inMix: false, isFinanced: false, priceType: 'STANDARD', hasUsed: false, usedValue: '' });
+            };
+
+            return html`
+                <div className="space-y-6">
+                    <section className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center justify-between">
+                        <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase block">Periodo</label>
+                            <input type="month" value=${activeMonth} onChange=${e => onMonthChange(e.target.value)} className="bg-transparent font-bold text-indigo-800 outline-none" />
+                        </div>
+                    </section>
+
+                    ${!isClosed && html`
+                        <form onSubmit=${handleSubmit} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+                            <h2 className="text-lg font-black text-indigo-800 uppercase tracking-tight">${editingId ? 'Editando' : 'Nueva Venta'}</h2>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="col-span-2">
+                                    <input placeholder="Cliente" value=${formData.client} onChange=${e => setFormData({...formData, client: e.target.value})} className="w-full p-3 bg-gray-50 border rounded-lg text-sm" required />
+                                </div>
+                                <input placeholder="Modelo" value=${formData.model} onChange=${e => setFormData({...formData, model: e.target.value})} className="p-3 bg-gray-50 border rounded-lg text-sm" required />
+                                <input type="number" placeholder="Precio con IVA" value=${formData.priceWithVat} onChange=${e => setFormData({...formData, priceWithVat: e.target.value})} className="p-3 bg-gray-50 border rounded-lg text-sm" required />
+                            </div>
+                            <div className="flex gap-4">
+                                <label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked=${formData.inMix} onChange=${e => setFormData({...formData, inMix: e.target.checked})} /> MIX</label>
+                                <label className="flex items-center gap-2 text-xs font-bold"><input type="checkbox" checked=${formData.isFinanced} onChange=${e => setFormData({...formData, isFinanced: e.target.checked})} /> FINANC.</label>
+                            </div>
+                            <button type="submit" className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black uppercase text-xs">${editingId ? 'Actualizar' : 'Guardar'}</button>
+                        </form>
+                    `}
+
+                    <div className="space-y-3">
+                        ${sales.map(sale => html`
+                            <div key=${sale.id} className="bg-white p-4 rounded-xl border shadow-sm flex justify-between items-center group relative overflow-hidden">
+                                <div>
+                                    <h3 className="font-bold text-sm uppercase">${sale.client}</h3>
+                                    <p className="text-[10px] text-gray-400">${sale.model}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="font-black text-indigo-600">${formatCurrency(sale.baseCommissionUnit)}</p>
+                                </div>
+                                ${!isClosed && html`
+                                    <div className="absolute right-0 top-0 bottom-0 bg-white/90 backdrop-blur flex items-center gap-2 px-2 translate-x-full group-hover:translate-x-0 transition-transform">
+                                        <button onClick=${() => { setEditingId(sale.id); setFormData(sale); }} className="p-2 bg-indigo-500 text-white rounded-lg">✎</button>
+                                        <button onClick=${() => onDeleteSale(sale.id)} className="p-2 bg-red-500 text-white rounded-lg">✕</button>
+                                    </div>
+                                `}
+                            </div>
+                        `)}
+                    </div>
+                </div>
+            `;
+        };
+
+        const NetEstimatedView = ({ sales, params, qualityScore, isClosed, vacationAllowance, transportAllowance, setVacationAllowance, setTransportAllowance, savedSummary }) => {
+            const formatCurrency = (val) => val.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
+
+            const summary = useMemo(() => {
+                if (isClosed && savedSummary) return savedSummary;
+                const totalBase = sales.reduce((sum, s) => sum + s.baseCommissionUnit, 0);
+                // (Simulación simplificada de premios para vista previa)
+                const finalBruto = totalBase; // Simplificado para este export
+                const baseForRetentions = finalBruto + vacationAllowance;
+                const retentions = baseForRetentions * RETENTION_RATE;
+                const net = baseForRetentions - retentions + transportAllowance - MOVISTAR_FIXED_DEDUCTION;
+                return { bruto: finalBruto, retentions, net };
+            }, [sales, vacationAllowance, transportAllowance, isClosed, savedSummary]);
+
+            return html`
+                <div className="space-y-6 animate-fade-in">
+                    <section className="bg-white p-5 rounded-xl border shadow-sm space-y-4">
+                        <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Variables Mensuales</h3>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Remunerativo Vacacional</label>
+                                <input type="number" disabled=${isClosed} value=${vacationAllowance} onChange=${e => setVacationAllowance(parseFloat(e.target.value) || 0)} className="w-full p-3 border rounded-lg text-sm" />
+                            </div>
+                            <div>
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase mb-1">Asig. Transporte</label>
+                                <input type="number" disabled=${isClosed} value=${transportAllowance} onChange=${e => setTransportAllowance(parseFloat(e.target.value) || 0)} className="w-full p-3 border rounded-lg text-sm" />
+                            </div>
+                        </div>
+                    </section>
+
+                    <section className="bg-indigo-600 text-white p-6 rounded-2xl shadow-xl text-center">
+                        <p className="text-[10px] uppercase font-bold opacity-60 mb-2">Neto Estimado Final</p>
+                        <h2 className="text-4xl font-black">${formatCurrency(summary.net)}</h2>
+                        <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-2 text-[10px] font-bold uppercase gap-4">
+                            <div><p className="opacity-60">Retenciones</p><p>-${formatCurrency(summary.retentions)}</p></div>
+                            <div><p className="opacity-60">Fijo Movistar</p><p>-${formatCurrency(MOVISTAR_FIXED_DEDUCTION)}</p></div>
+                        </div>
+                    </section>
+                </div>
+            `;
+        };
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState(Tab.SALES);
+            const [store, setStore] = useState(() => {
+                const saved = localStorage.getItem('comisapp_v3_store');
+                if (saved) return JSON.parse(saved);
+                const month = new Date().toISOString().slice(0, 7);
+                return { activeMonth: month, months: { [month]: { status: 'open', sales: [], parameters: INITIAL_PARAMS, qualityScore: 0, vacationAllowance: 0, transportAllowance: 0, summary: null } } };
+            });
+
+            useEffect(() => localStorage.setItem('comisapp_v3_store', JSON.stringify(store)), [store]);
+
+            const activeData = store.months[store.activeMonth] || { status: 'open', sales: [], parameters: INITIAL_PARAMS, qualityScore: 0, vacationAllowance: 0, transportAllowance: 0, summary: null };
+
+            const updateMonth = (updates) => {
+                if (activeData.status === 'closed' && !updates.status) return;
+                setStore(prev => ({...prev, months: {...prev.months, [prev.activeMonth]: {...prev.months[prev.activeMonth], ...updates}}}));
+            };
+
+            return html`
+                <${Layout} activeTab=${activeTab} setActiveTab=${setActiveTab} activeMonthId=${store.activeMonth} isClosed=${activeData.status === 'closed'}>
+                    ${activeTab === Tab.SALES && html`
+                        <${SalesView} 
+                            sales=${activeData.sales} params=${activeData.parameters} activeMonth=${store.activeMonth} isClosed=${activeData.status === 'closed'}
+                            onAddSale=${s => updateMonth({ sales: [...activeData.sales, s] })}
+                            onUpdateSale=${s => updateMonth({ sales: activeData.sales.map(i => i.id === s.id ? s : i) })}
+                            onDeleteSale=${id => updateMonth({ sales: activeData.sales.filter(i => i.id !== id) })}
+                            onMonthChange=${m => setStore(p => ({...p, activeMonth: m, months: {...p.months, [m]: p.months[m] || {status:'open', sales:[], parameters:INITIAL_PARAMS, qualityScore:0, vacationAllowance:0, transportAllowance:0, summary:null}}}))}
+                        />
+                    `}
+                    ${activeTab === Tab.NET_ESTIMATED && html`
+                        <${NetEstimatedView} 
+                            sales=${activeData.sales} params=${activeData.parameters} qualityScore=${activeData.qualityScore}
+                            isClosed=${activeData.status === 'closed'} savedSummary=${activeData.summary}
+                            vacationAllowance=${activeData.vacationAllowance} transportAllowance=${activeData.transportAllowance}
+                            setVacationAllowance=${v => updateMonth({ vacationAllowance: v })}
+                            setTransportAllowance=${t => updateMonth({ transportAllowance: t })}
+                        />
+                    `}
+                    ${activeTab === Tab.SUMMARY && html`
+                        <div className="p-4 text-center">
+                            <h2 className="font-black text-gray-400 uppercase">Resumen de Cierre</h2>
+                            <p className="text-xs mt-2 italic">Funcionalidad en desarrollo para versión estática.</p>
+                            <button onClick=${() => updateMonth({status: activeData.status === 'closed' ? 'open' : 'closed'})} className="mt-6 px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold">
+                                ${activeData.status === 'closed' ? 'Abrir Mes' : 'Cerrar Mes'}
+                            </button>
+                        </div>
+                    `}
+                    ${activeTab === Tab.HISTORY && html`
+                        <div className="space-y-4">
+                            <h2 className="font-black text-indigo-900 uppercase">Historial</h2>
+                            ${Object.keys(store.months).map(m => html`
+                                <div className="p-4 bg-white border rounded-xl flex justify-between items-center">
+                                    <span className="font-bold">${m}</span>
+                                    <span className="text-[10px] font-bold uppercase opacity-50">${store.months[m].status}</span>
+                                </div>
+                            `)}
+                        </div>
+                    `}
+                <//>
+            `;
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(html`<${App} />`);
+
+        // Register Service Worker for Offline
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW registration failed: ', err));
+            });
+        }
+    </script>
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
