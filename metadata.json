@@ -1,5 +1,5 @@
 {
-  "name": "ComisApp - Calculador de Comisiones",
-  "description": "Una aplicación web progresiva para el seguimiento y cálculo de comisiones de ventas con parámetros personalizables y funcionamiento offline.",
+  "name": "Calculador de Comisiones Automotriz",
+  "description": "Aplicación offline-first para el cálculo de ventas, premios y resumen de recibo de sueldo SMATA.",
   "requestFramePermissions": []
 }

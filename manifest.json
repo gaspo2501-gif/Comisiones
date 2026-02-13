@@ -1,25 +1,21 @@
 
 {
-  "name": "ComisApp - Gestión de Comisiones",
-  "short_name": "ComisApp",
-  "description": "Calculador de comisiones offline para vendedores.",
-  "start_url": "./index.html",
-  "display": "standalone",
-  "background_color": "#4f46e5",
-  "theme_color": "#4f46e5",
-  "orientation": "portrait",
+  "short_name": "Comisiones",
+  "name": "Calculador de Comisiones y Sueldo",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/192/2618/2618175.png",
+      "src": "https://picsum.photos/192/192",
       "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any maskable"
+      "sizes": "192x192"
     },
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/2618/2618175.png",
+      "src": "https://picsum.photos/512/512",
       "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "any maskable"
+      "sizes": "512x512"
     }
-  ]
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#ffffff"
 }
