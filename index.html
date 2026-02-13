@@ -489,6 +489,21 @@
                                         </div>
                                     </ConfigSection>
 
+                                    <ConfigSection title="Bono de Calidad" icon="award">
+                                        <div className="space-y-4">
+                                            <div className="grid grid-cols-3 gap-3">
+                                                {['n1', 'n2', 'n3'].map(lvl => (
+                                                    <ConfigInput key={lvl} label={`Umbral ${lvl.toUpperCase()}`} value={currentConfig.calidadThresholds[lvl]} 
+                                                        onChange={v => updateConfig({ calidadThresholds: {...currentConfig.calidadThresholds, [lvl]: parseFloat(v)} })} />
+                                                ))}
+                                            </div>
+                                            <div className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800">
+                                                <ConfigInput label="Puntaje Obtenido en el Mes" value={currentConfig.calidadPuntaje} 
+                                                    onChange={v => updateConfig({ calidadPuntaje: parseFloat(v) })} />
+                                            </div>
+                                        </div>
+                                    </ConfigSection>
+
                                     <div className="grid grid-cols-2 gap-6">
                                         <ConfigSection title="Vacacional" icon="sun">
                                             <div className="space-y-3">
