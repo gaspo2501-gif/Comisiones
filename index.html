@@ -266,7 +266,7 @@
                     label: r.label,
                     amount: brutoRemunerativo * r.rate
                 }));
-                const totalRetenciones = brutoRemunerativo * TOTAL_SMATA_RATE;
+                const totalRetenciones = (brutoRemunerativo * TOTAL_SMATA_RATE);
                 const netoEstimado = (brutoRemunerativo - totalRetenciones) - FIXED_MOVISTAR + transporteTotal;
 
                 return { 
@@ -299,28 +299,29 @@
 
             const generatePDF = () => {
                 const { jsPDF } = window.jspdf;
-                const doc = new jsPDF();
+                const doc = new jsPDF('p', 'mm', 'a4');
                 const pageWidth = doc.internal.pageSize.getWidth();
                 const emerald = [5, 150, 105];
-                const zincHeader = [24, 24, 27];
+                const zincHeader = [18, 18, 18];
 
-                // Header
+                // Header Compacto
                 doc.setFillColor(...zincHeader);
-                doc.rect(0, 0, pageWidth, 40, 'F');
+                doc.rect(0, 0, pageWidth, 30, 'F');
                 doc.setTextColor(255, 255, 255);
-                doc.setFontSize(22);
+                doc.setFontSize(18);
                 doc.setFont("helvetica", "bold");
-                doc.text("REPORTE DE COMISIONES", 15, 25);
+                doc.text("REPORTE DE COMISIONES", 15, 18);
                 
-                doc.setFontSize(10);
+                doc.setFontSize(9);
                 doc.setFont("helvetica", "normal");
-                doc.text(`Período: ${selectedMonth}`, 15, 33);
-                doc.text(`Unidades Totales: ${stats.totalUnits}`, pageWidth - 15, 33, { align: 'right' });
+                doc.text(`Período: ${selectedMonth}`, 15, 25);
+                doc.text(`Generado: ${new Date().toLocaleDateString()}`, pageWidth - 15, 25, { align: 'right' });
 
-                // Section: Detalle de Ventas
-                doc.setTextColor(50, 50, 50);
-                doc.setFontSize(14);
-                doc.text("Detalle de Operaciones", 15, 52);
+                // Section: Detalle de Ventas (Compacta)
+                doc.setTextColor(40, 40, 40);
+                doc.setFontSize(11);
+                doc.setFont("helvetica", "bold");
+                doc.text("Detalle de Operaciones", 15, 40);
 
                 const tableVentas = filteredVentas.map(v => {
                     const isAmarok = v.modelo === 'Amarok';
@@ -336,94 +337,73 @@
                 });
 
                 doc.autoTable({
-                    startY: 58,
+                    startY: 44,
                     head: [['Fecha', 'Modelo', 'Precio Final', 'Base s/IVA', 'Comisión']],
                     body: tableVentas,
                     theme: 'striped',
-                    headStyles: { fillColor: emerald, fontSize: 10 },
-                    styles: { fontSize: 9 },
+                    headStyles: { fillColor: emerald, fontSize: 8.5 },
+                    styles: { fontSize: 8, cellPadding: 1.5 },
                     columnStyles: {
                         2: { halign: 'right' },
                         3: { halign: 'right' },
                         4: { halign: 'right' }
-                    }
+                    },
+                    margin: { left: 15, right: 15 }
                 });
 
-                let currentY = doc.lastAutoTable.finalY + 15;
+                let currentY = doc.lastAutoTable.finalY + 8;
 
-                // Section: Liquidación Detallada
-                doc.setFontSize(14);
-                doc.text("Liquidación de Haberes", 15, currentY);
-                currentY += 6;
+                // Section: Liquidación y Deducciones (Lado a lado o apiladas compactas)
+                doc.setFontSize(11);
+                doc.setFont("helvetica", "bold");
+                doc.text("Resumen de Haberes y Deducciones", 15, currentY);
+                currentY += 4;
 
                 const liquidacionData = [
-                    ['Comisiones 0km', formatMoney(stats.totalCom0km)],
+                    ['Comisiones 0km (Neto de IVA)', formatMoney(stats.totalCom0km)],
                     ['Comisiones Usados', formatMoney(stats.totalComUsed)],
                     ['Bono Volumen (' + stats.levelVol.toUpperCase() + ')', formatMoney(stats.prizeVol)],
                     ['Bono Mix de Venta (' + stats.levelMix.toUpperCase() + ')', formatMoney(stats.prizeMix)],
                     ['Bono Financiación (' + stats.levelFin.toUpperCase() + ')', formatMoney(stats.prizeFin)],
                     ['Bono Calidad (' + stats.levelCal.toUpperCase() + ')', formatMoney(stats.prizeCal)],
-                    ['Haber Vacacional', formatMoney(stats.vacacionalTotal)],
-                    [{ content: 'TOTAL BRUTO REMUNERATIVO', styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }, { content: formatMoney(stats.brutoRemunerativo), styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }]
+                    ['Concepto Vacacional', formatMoney(stats.vacacionalTotal)],
+                    [{ content: 'TOTAL BRUTO REMUNERATIVO', styles: { fontStyle: 'bold', fillColor: [245, 245, 245] } }, { content: formatMoney(stats.brutoRemunerativo), styles: { fontStyle: 'bold', fillColor: [245, 245, 245] } }],
+                    ['Retenciones de Ley (Jubilacion, OS, INSSJP, Cuota)', '-' + formatMoney(stats.totalRetenciones)],
+                    ['Cargo Fijo Movistar', '-' + formatMoney(FIXED_MOVISTAR)],
+                    ['Asignación Transporte (No remunerativo)', '+' + formatMoney(stats.transporteTotal)]
                 ];
 
                 doc.autoTable({
                     startY: currentY,
                     body: liquidacionData,
                     theme: 'plain',
-                    styles: { fontSize: 10, cellPadding: 2 },
-                    columnStyles: { 1: { halign: 'right' } }
+                    styles: { fontSize: 8.5, cellPadding: 1.2 },
+                    columnStyles: { 1: { halign: 'right' } },
+                    margin: { left: 15, right: 15 }
                 });
 
-                currentY = doc.lastAutoTable.finalY + 10;
+                currentY = doc.lastAutoTable.finalY + 12;
 
-                // Section: Deducciones
-                doc.setFontSize(14);
-                doc.text("Deducciones y Retenciones", 15, currentY);
-                currentY += 6;
+                // Final Summary Box (Optimizado para pie de página de una hoja)
+                if (currentY > 260) { // Si queda muy poco espacio, forzar una mini-caja
+                    currentY = 260;
+                }
 
-                const retencionesData = stats.desglosadoRetenciones.map(r => [r.label, '-' + formatMoney(r.amount)]);
-                retencionesData.push(['Cargo Fijo Movistar', '-' + formatMoney(FIXED_MOVISTAR)]);
-                retencionesData.push([{ content: 'TOTAL RETENCIONES', styles: { fontStyle: 'bold' } }, { content: '-' + formatMoney(stats.totalRetenciones + FIXED_MOVISTAR), styles: { fontStyle: 'bold' } }]);
-
-                doc.autoTable({
-                    startY: currentY,
-                    body: retencionesData,
-                    theme: 'plain',
-                    styles: { fontSize: 10, cellPadding: 2, textColor: [180, 0, 0] },
-                    columnStyles: { 1: { halign: 'right' } }
-                });
-
-                currentY = doc.lastAutoTable.finalY + 10;
-
-                // Section: Adicionales No Remunerativos
-                const adicionalesData = [
-                    ['Asignación Transporte (Post-retenciones)', formatMoney(stats.transporteTotal)]
-                ];
-
-                doc.autoTable({
-                    startY: currentY,
-                    body: adicionalesData,
-                    theme: 'plain',
-                    styles: { fontSize: 10, cellPadding: 2, textColor: emerald, fontStyle: 'bold' },
-                    columnStyles: { 1: { halign: 'right' } }
-                });
-
-                currentY = doc.lastAutoTable.finalY + 15;
-
-                // Final Summary Box
                 doc.setFillColor(...emerald);
-                doc.rect(15, currentY, pageWidth - 30, 25, 'F');
+                doc.rect(15, currentY, pageWidth - 30, 20, 'F');
                 doc.setTextColor(255, 255, 255);
-                doc.setFontSize(10);
-                doc.text("NETO ESTIMADO A PERCIBIR", 25, currentY + 10);
-                doc.setFontSize(18);
-                doc.text(formatMoney(stats.netoEstimado), 25, currentY + 19);
                 
-                doc.setFontSize(8);
-                doc.text("Este documento es una proyección estimativa basada en los datos ingresados.", pageWidth - 25, currentY + 20, { align: 'right' });
+                doc.setFontSize(9);
+                doc.text("NETO ESTIMADO A PERCIBIR (EN MANO)", 25, currentY + 7);
+                doc.setFontSize(16);
+                doc.setFont("helvetica", "bold");
+                doc.text(formatMoney(stats.netoEstimado), 25, currentY + 15);
+                
+                doc.setFontSize(7.5);
+                doc.setFont("helvetica", "italic");
+                doc.text("Este reporte es una proyección informativa basada en los datos suministrados por el usuario.", pageWidth - 25, currentY + 15, { align: 'right' });
 
-                doc.save(`Liquidacion_${selectedMonth}.pdf`);
+                doc.save(`Reporte_Comisiones_${selectedMonth}.pdf`);
             };
 
             return (
